@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"io/ioutil"
 	"log"
 	"net/http"
 	"os"
@@ -12,11 +13,26 @@ import (
 )
 
 var (
-	fileName string
-	jsonData string
+	Filename       string
+	OutputFilename string
+	PostData       string
+	RequestList    []RequestData
 )
 
+type RequestData struct {
+	url            string
+	method         string
+	protocol       string
+	headers        http.Header
+	content_lenght int64
+	host           string
+	body           string
+}
+
 func main() {
+	//* Init the Request list logger
+	RequestList = []RequestData{}
+
 	app := &cli.App{
 		Flags: []cli.Flag{
 			&cli.StringFlag{
@@ -24,16 +40,22 @@ func main() {
 				Value:       "",
 				Aliases:     []string{"f"},
 				Usage:       "Reads JSON from file, returned on POST",
-				Destination: &fileName,
+				Destination: &Filename,
 			},
 			&cli.StringFlag{
-				Name:        "json",
+				Name:        "data",
 				Value:       "",
 				Aliases:     []string{"j"},
-				Usage:       "JSON returned on POST",
-				Destination: &jsonData,
+				Usage:       "Data returned on POST",
+				Destination: &PostData,
 			},
-			//TODO: Create Output file to JSON
+			&cli.StringFlag{
+				Name:        "output",
+				Value:       "",
+				Aliases:     []string{"o"},
+				Usage:       "Output file for the requests data",
+				Destination: &PostData,
+			},
 		},
 		Action: func(ctx *cli.Context) error {
 
@@ -47,7 +69,7 @@ func main() {
 				port = "5000"
 			}
 
-			startAPIServer(port, jsonData, fileName)
+			startAPIServer(port, PostData, Filename)
 			return nil
 		},
 	}
@@ -57,28 +79,25 @@ func main() {
 
 }
 
-func startAPIServer(port string, postData string, fileName string) {
+func startAPIServer(port string, postData string, filename string) {
 	color.HiYellow("Starting the API endpoint on port: " + port)
 
-	if fileName != "" && postData != "" {
+	if filename != "" && postData != "" {
 		color.Red("Cannot use --file and --json at the same time.")
 		return
-	} else if fileName != "" {
-		color.Green("Using file data as POST")
+	} else if filename != "" {
+		color.Green("Using file data as POST response")
 		// TODO: Read the file and send it to server
 	} else if postData != "" {
-		color.Green("Using JSON argument as POST")
+		color.Green("Using data argument as POST response")
 		http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 			//* Returns the JSON and prints the data about it
 			fmt.Fprintf(w, postData)
 			requestDebugger(w, r)
 		})
-		log.Printf(":" + port)
 		http.ListenAndServe(":"+port, nil)
 	} else {
 		color.Green("Starting basic API server")
-
-		// TODO: Don't bind only to /, rather to everything!
 		http.HandleFunc("/", requestDebugger)
 		http.ListenAndServe(":"+port, nil)
 	}
@@ -86,5 +105,25 @@ func startAPIServer(port string, postData string, fileName string) {
 
 func requestDebugger(w http.ResponseWriter, r *http.Request) {
 	//* Prints the details of the request
-	log.Println("Incoming Request on:", r.URL)
+
+	req_body, err := ioutil.ReadAll(r.Body)
+	if err != nil {
+		log.Panic(err)
+	}
+
+	request := RequestData{url: r.URL.Path, method: r.Method, protocol: r.Proto, headers: r.Header, host: r.Host, body: string(req_body)}
+
+	fmt.Println("")
+	color.Magenta("Request on: " + color.New(color.FgHiMagenta).Sprint(r.URL.Path))
+	color.Yellow("Method: " + color.New(color.FgHiYellow).Sprint(request.method))
+	color.Cyan("Protocol: " + color.New(color.FgHiCyan).Sprint(request.protocol))
+	for i, j := range request.headers {
+		fmt.Print(color.RedString(i) + " : ")
+		for _, l := range j {
+			fmt.Print(color.HiRedString(l) + "\n")
+		}
+	}
+	color.Green("Body: " + color.New(color.FgHiGreen).Sprint(request.body))
+
+	RequestList = append(RequestList, request)
 }
