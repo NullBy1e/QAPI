@@ -1,12 +1,15 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"io/ioutil"
 	"log"
 	"net/http"
 	"os"
+	"os/signal"
 	"strconv"
+	"syscall"
 
 	"github.com/fatih/color"
 	"github.com/urfave/cli/v2"
@@ -20,18 +23,20 @@ var (
 )
 
 type RequestData struct {
-	url            string
-	method         string
-	protocol       string
-	headers        http.Header
-	content_lenght int64
-	host           string
-	body           string
+	Url      string      `json:"url"`
+	Method   string      `json:"method"`
+	Protocol string      `json:"protocol"`
+	Headers  http.Header `json:"headers"`
+	Host     string      `json:"host"`
+	Body     string      `json:"body"`
 }
 
 func main() {
 	//* Init the Request list logger
 	RequestList = []RequestData{}
+
+	done := make(chan os.Signal, 1)
+	signal.Notify(done, os.Interrupt, syscall.SIGINT, syscall.SIGTERM)
 
 	app := &cli.App{
 		Flags: []cli.Flag{
@@ -54,7 +59,7 @@ func main() {
 				Value:       "",
 				Aliases:     []string{"o"},
 				Usage:       "Output file for the requests data",
-				Destination: &PostData,
+				Destination: &OutputFilename,
 			},
 		},
 		Action: func(ctx *cli.Context) error {
@@ -76,31 +81,44 @@ func main() {
 	if err := app.Run(os.Args); err != nil {
 		log.Fatal(err)
 	}
-
 }
 
 func startAPIServer(port string, postData string, filename string) {
 	color.HiYellow("Starting the API endpoint on port: " + port)
 
-	if filename != "" && postData != "" {
-		color.Red("Cannot use --file and --json at the same time.")
-		return
-	} else if filename != "" {
-		color.Green("Using file data as POST response")
-		// TODO: Read the file and send it to server
-	} else if postData != "" {
-		color.Green("Using data argument as POST response")
-		http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-			//* Returns the JSON and prints the data about it
-			fmt.Fprintf(w, postData)
-			requestDebugger(w, r)
-		})
-		http.ListenAndServe(":"+port, nil)
-	} else {
-		color.Green("Starting basic API server")
-		http.HandleFunc("/", requestDebugger)
-		http.ListenAndServe(":"+port, nil)
+	done := make(chan os.Signal, 1)
+	signal.Notify(done, os.Interrupt, syscall.SIGINT, syscall.SIGTERM)
+
+	go func() {
+		if filename != "" && postData != "" {
+			color.Red("Cannot use --file and --json at the same time.")
+			return
+		} else if filename != "" {
+			color.Green("Using file data as POST response")
+			// TODO: Read the file and send it to server
+		} else if postData != "" {
+			color.Green("Using data argument as POST response")
+			http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+				//* Returns the JSON and prints the data about it
+				fmt.Fprintf(w, postData)
+				requestDebugger(w, r)
+			})
+			http.ListenAndServe(":"+port, nil)
+		} else {
+			color.Green("Starting basic API server")
+			http.HandleFunc("/", requestDebugger)
+			http.ListenAndServe(":"+port, nil)
+		}
+	}()
+
+	<-done
+	if OutputFilename != "" {
+		//* Create and dump the content
+		log.Println("Dumping content")
+		buff, _ := json.Marshal(RequestList)
+		ioutil.WriteFile(OutputFilename, buff, 0644)
 	}
+	log.Print("Server Stopped")
 }
 
 func requestDebugger(w http.ResponseWriter, r *http.Request) {
@@ -111,19 +129,28 @@ func requestDebugger(w http.ResponseWriter, r *http.Request) {
 		log.Panic(err)
 	}
 
-	request := RequestData{url: r.URL.Path, method: r.Method, protocol: r.Proto, headers: r.Header, host: r.Host, body: string(req_body)}
+	request := RequestData{
+		Url:      r.URL.Path,
+		Method:   r.Method,
+		Protocol: r.Proto,
+		Headers:  r.Header,
+		Host:     r.Host,
+		Body:     string(req_body),
+	}
 
 	fmt.Println("")
-	color.Magenta("Request on: " + color.New(color.FgHiMagenta).Sprint(r.URL.Path))
-	color.Yellow("Method: " + color.New(color.FgHiYellow).Sprint(request.method))
-	color.Cyan("Protocol: " + color.New(color.FgHiCyan).Sprint(request.protocol))
-	for i, j := range request.headers {
+	color.Magenta("Request on: " + color.New(color.FgHiMagenta).Sprint(request.Url))
+	color.Yellow("Method: " + color.New(color.FgHiYellow).Sprint(request.Method))
+	color.Cyan("Protocol: " + color.New(color.FgHiCyan).Sprint(request.Protocol))
+
+	for i, j := range request.Headers {
 		fmt.Print(color.RedString(i) + " : ")
 		for _, l := range j {
 			fmt.Print(color.HiRedString(l) + "\n")
 		}
 	}
-	color.Green("Body: " + color.New(color.FgHiGreen).Sprint(request.body))
+
+	color.Green("Body: " + color.New(color.FgHiGreen).Sprint(request.Body))
 
 	RequestList = append(RequestList, request)
 }
