@@ -122,7 +122,7 @@ func startAPIServer(port string) {
 		buff, _ := json.Marshal(RequestList)
 		ioutil.WriteFile(OutputFilename, buff, 0644)
 	}
-	color.HiRed("Server stopped")
+	color.HiRed("\nServer stopped")
 }
 
 func requestDebugger(w http.ResponseWriter, r *http.Request) {

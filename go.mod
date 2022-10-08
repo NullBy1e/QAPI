@@ -1,4 +1,4 @@
-module Qapi
+module qAPI
 
 go 1.19
 
