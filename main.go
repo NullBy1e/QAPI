@@ -41,14 +41,14 @@ func main() {
 				Name:        "file",
 				Value:       "",
 				Aliases:     []string{"f"},
-				Usage:       "Reads JSON from file, returned on POST",
+				Usage:       "Reads JSON from file returns on request",
 				Destination: &InputFilename,
 			},
 			&cli.StringFlag{
 				Name:        "data",
 				Value:       "",
-				Aliases:     []string{"j"},
-				Usage:       "Data returned on POST",
+				Aliases:     []string{"d"},
+				Usage:       "Data returned on request",
 				Destination: &PostData,
 			},
 			&cli.StringFlag{
@@ -66,7 +66,6 @@ func main() {
 				cli.Exit("Port must be in range 0-99999", 2)
 			}
 
-			log.Println(port)
 			if port == "" {
 				port = "5000"
 			}
