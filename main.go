@@ -16,10 +16,10 @@ import (
 )
 
 var (
-	InputFilename  string
-	OutputFilename string
-	PostData       string
-	RequestList    []RequestData
+	InputFile    string
+	OutputFile   string
+	ResponseData string
+	RequestList  []RequestData
 )
 
 type RequestData struct {
@@ -32,7 +32,7 @@ type RequestData struct {
 }
 
 func main() {
-	//* Init the Request list logger
+	//* Init the Request list
 	RequestList = []RequestData{}
 
 	app := &cli.App{
@@ -42,21 +42,21 @@ func main() {
 				Value:       "",
 				Aliases:     []string{"f"},
 				Usage:       "Reads JSON from file returns on request",
-				Destination: &InputFilename,
+				Destination: &InputFile,
 			},
 			&cli.StringFlag{
 				Name:        "data",
 				Value:       "",
 				Aliases:     []string{"d"},
 				Usage:       "Data returned on request",
-				Destination: &PostData,
+				Destination: &ResponseData,
 			},
 			&cli.StringFlag{
 				Name:        "output",
 				Value:       "",
 				Aliases:     []string{"o"},
-				Usage:       "Output file for the requests data",
-				Destination: &OutputFilename,
+				Usage:       "Writes the requests data to the specified filename",
+				Destination: &OutputFile,
 			},
 		},
 		Action: func(ctx *cli.Context) error {
@@ -86,13 +86,16 @@ func startAPIServer(port string) {
 	signal.Notify(done, os.Interrupt, syscall.SIGINT, syscall.SIGTERM)
 
 	go func() {
-		if InputFilename != "" && PostData != "" {
+		//* Checks if user passed -d and -f
+		if InputFile != "" && ResponseData != "" {
 			color.Red("Cannot use --file and --json at the same time.")
 			return
-		} else if InputFilename != "" {
-			color.Green("Using file data as POST response")
+		}
+		// * Checks for -f
+		if InputFile != "" {
+			color.Green("Using file data as response")
 
-			file_content, err := ioutil.ReadFile(InputFilename)
+			file_content, err := ioutil.ReadFile(InputFile)
 			if err != nil {
 				log.Panic(err)
 			}
@@ -101,12 +104,15 @@ func startAPIServer(port string) {
 				fmt.Fprintf(w, string(file_content))
 				requestDebugger(w, r)
 			})
-		} else if PostData != "" {
-			color.Green("Using data argument as POST response")
+			// * User passed -d
+		} else if ResponseData != "" {
+			color.Green("Using data argument as response")
+
 			http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-				fmt.Fprintf(w, PostData)
+				fmt.Fprintf(w, ResponseData)
 				requestDebugger(w, r)
 			})
+			//* User didn't provide any flag
 		} else {
 			color.Green("Starting basic API server")
 			http.HandleFunc("/", requestDebugger)
@@ -115,17 +121,17 @@ func startAPIServer(port string) {
 	}()
 
 	<-done
-	if OutputFilename != "" {
-		//* Create file and dump the requests
+	//* Dumps the requests to file on request
+	if OutputFile != "" {
 		color.HiBlue("\nWriting requests to file...")
 		buff, _ := json.Marshal(RequestList)
-		ioutil.WriteFile(OutputFilename, buff, 0644)
+		ioutil.WriteFile(OutputFile, buff, 0644)
 	}
 	color.HiRed("\nServer stopped")
 }
 
 func requestDebugger(w http.ResponseWriter, r *http.Request) {
-	//* Prints the details of the request
+	//* Prints and formats the details of the request
 
 	req_body, err := ioutil.ReadAll(r.Body)
 	if err != nil {
